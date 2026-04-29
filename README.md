@@ -1,8 +1,12 @@
 # ai-code-review-governance
 
-# 🧠 Big Picture
+# 🧠 Big Picture - What is this project?
 
-You’re building:
+It’s an AI assistant for code reviews.
+
+When someone opens a pull request on GitHub, your system automatically checks the code, looks for bugs, security issues, and improvements, then leaves feedback and a pass/warn/fail decision—like a senior engineer reviewing the code.
+
+I'm building:
 
 ```text
 A backend service that:
