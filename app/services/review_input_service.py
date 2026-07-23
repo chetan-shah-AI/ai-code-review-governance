@@ -3,11 +3,15 @@ from app.services.file_classifier import classify_file, should_ignore_file
 from app.services.diff_chunker import chunk_patch
 
 
-MAX_ADDITIONS = 1800
-MAX_DELETIONS = 1800
+MAX_ADDITIONS = 800
+MAX_DELETIONS = 800
 
 
 def should_review_file(file: dict) -> bool:
+    """
+    Decide whether a changed file should be reviewed.
+    """
+
     filename = file.get("filename", "")
     patch = file.get("patch")
     additions = file.get("additions", 0)
@@ -31,16 +35,20 @@ def build_review_input(
     raw_pr: dict,
     raw_files: list[dict],
 ) -> ReviewInput:
-    review_files = []
+    """
+    Convert raw GitHub PR data into clean review input.
+    """
+
+    review_files: list[ReviewFileInput] = []
 
     for file in raw_files:
-        print(f"Processing file in build review: {file.get('filename', 'unknown')}")
         if not should_review_file(file):
             continue
 
         filename = file.get("filename", "")
+        patch = file.get("patch", "")
+
         file_type = classify_file(filename)
-        patch = file.get("patch")
 
         chunks = chunk_patch(
             file_path=filename,
@@ -67,4 +75,3 @@ def build_review_input(
         commit_sha=raw_pr.get("head", {}).get("sha"),
         files=review_files,
     )
-

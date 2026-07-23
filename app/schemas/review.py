@@ -2,6 +2,10 @@ from pydantic import BaseModel
 
 
 class DiffChunk(BaseModel):
+    """
+    One smaller section of a GitHub diff.
+    """
+
     file_path: str
     chunk_index: int
     start_line: int | None = None
@@ -10,6 +14,10 @@ class DiffChunk(BaseModel):
 
 
 class ReviewFileInput(BaseModel):
+    """
+    One changed file prepared for review.
+    """
+
     filename: str
     file_type: str
     status: str
@@ -19,6 +27,10 @@ class ReviewFileInput(BaseModel):
 
 
 class ReviewInput(BaseModel):
+    """
+    Full pull request input prepared for review.
+    """
+
     repo_full_name: str
     pr_number: int
     title: str | None = None
