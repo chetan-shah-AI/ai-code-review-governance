@@ -6,25 +6,18 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     """
-    Application configuration loaded from
-    environment variables or a .env file.
+    Application configuration loaded from environment variables.
     """
 
-    app_name: str = (
-        "AI Code Review Governance"
-    )
-
+    app_name: str = "AI Code Review Governance"
     environment: str = "development"
 
     openai_api_key: str | None = None
     openai_model: str = "gpt-4.1-mini"
 
     github_token: str | None = None
-    github_webhook_secret: str = ""
-
-    github_api_url: str = (
-        "https://api.github.com"
-    )
+    github_webhook_secret: str | None = None
+    github_api_url: str = "https://api.github.com"
 
     publish_to_github: bool = False
 
@@ -38,10 +31,6 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    """
-    Return a cached Settings instance.
-    """
-
     return Settings()
 
 
