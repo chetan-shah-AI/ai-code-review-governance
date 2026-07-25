@@ -1,21 +1,27 @@
-from typing import TypedDict
+from typing import Any, TypedDict
 
-from app.schemas.findings import Finding, ToolResult
 from app.schemas.review import ReviewInput
-from app.services.verdict_service import Verdict
 
 
-class ReviewGraphState(TypedDict):
+class ReviewGraphState(
+    TypedDict,
+    total=False,
+):
+    """
+    Shared state used by the LangGraph workflow.
+    """
+
     review_input: ReviewInput
 
-    deterministic_findings: list[Finding]
+    classified_files: list[Any]
+    deterministic_findings: list[Any]
+    ai_findings: list[Any]
+    governance_findings: list[Any]
+    all_findings: list[Any]
 
-    ai_findings: list[Finding]
+    verdict: Any
+    summary: Any
 
-    governance_findings: list[Finding]
-
-    all_findings: list[Finding]
-
-    verdict: str
-
-    summary: str
+    publish_enabled: bool
+    publish_markdown: str
+    publish_result: dict[str, Any]

@@ -11,6 +11,14 @@ import asyncio
 
 from app.services.publish_service import publish_review_to_github
 
+from typing import Any
+
+from app.clients.github_client import (GitHubClient, GitHubClientError,)
+from app.core.config import settings
+from app.graph.state import ReviewGraphState
+from app.services.publish_service import (PublishService,)
+
+
 
 # from app.schemas.review import DiffChunk, ReviewFileInput, ReviewInput
 
@@ -285,3 +293,134 @@ def publish_node(state: ReviewGraphState) -> ReviewGraphState:
             **state,
             "errors": errors,
         }
+    
+def publish_review_node(
+    state: ReviewGraphState,
+) -> dict[str, Any]:
+    """
+    Format the completed review and optionally
+    publish it to the GitHub Pull Request.
+    """
+
+    review_input = state["review_input"]
+
+    findings = state.get(
+        "all_findings",
+        [],
+    )
+
+    verdict = state.get(
+        "verdict",
+        "COMMENT",
+    )
+
+    summary = state.get(
+        "summary",
+        "No summary was generated.",
+    )
+
+    publish_service = PublishService()
+
+    markdown = publish_service.build_comment(
+        verdict=verdict,
+        summary=summary,
+        findings=findings,
+    )
+
+    publish_enabled = state.get(
+        "publish_enabled",
+        settings.publish_to_github,
+    )
+
+    if not publish_enabled:
+        return {
+            "publish_markdown": markdown,
+            "publish_result": {
+                "success": True,
+                "status": "skipped",
+                "repository": (
+                    review_input.repo_full_name
+                ),
+                "pr_number": (
+                    review_input.pr_number
+                ),
+                "message": (
+                    "GitHub publishing is disabled."
+                ),
+            },
+        }
+
+    if not settings.github_token:
+        return {
+            "publish_markdown": markdown,
+            "publish_result": {
+                "success": False,
+                "status": "failed",
+                "repository": (
+                    review_input.repo_full_name
+                ),
+                "pr_number": (
+                    review_input.pr_number
+                ),
+                "message": (
+                    "GITHUB_TOKEN is not configured."
+                ),
+            },
+        }
+
+    github_client = GitHubClient(
+        token=settings.github_token,
+        base_url=settings.github_api_url,
+    )
+
+    try:
+        response = (
+            github_client
+            .create_or_update_review_comment(
+                repo_full_name=(
+                    review_input.repo_full_name
+                ),
+                pr_number=(
+                    review_input.pr_number
+                ),
+                body=markdown,
+            )
+        )
+
+    except GitHubClientError as exc:
+        return {
+            "publish_markdown": markdown,
+            "publish_result": {
+                "success": False,
+                "status": "failed",
+                "repository": (
+                    review_input.repo_full_name
+                ),
+                "pr_number": (
+                    review_input.pr_number
+                ),
+                "message": str(exc),
+            },
+        }
+
+    return {
+        "publish_markdown": markdown,
+        "publish_result": {
+            "success": True,
+            "status": "published",
+            "repository": (
+                review_input.repo_full_name
+            ),
+            "pr_number": (
+                review_input.pr_number
+            ),
+            "comment_id": response.get("id"),
+            "comment_url": response.get(
+                "html_url"
+            ),
+            "message": (
+                "Review comment published "
+                "successfully."
+            ),
+        },
+    }

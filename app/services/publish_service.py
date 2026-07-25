@@ -2,6 +2,9 @@ from collections import Counter
 
 from app.clients.github_client import GitHubClient
 from app.graph.state import ReviewGraphState
+from collections import defaultdict
+from datetime import datetime, timezone
+from typing import Any
 
 
 AI_REVIEW_MARKER = "<!-- ai-code-review-governance -->"
@@ -149,3 +152,416 @@ async def publish_review_to_github(
         pr_number=review_input.pr_number,
         body=body,
     )
+
+
+
+
+class PublishService:
+    """
+    Converts the completed review workflow result
+    into a GitHub-compatible Markdown comment.
+    """
+
+    severity_order = {
+        "critical": 0,
+        "high": 1,
+        "medium": 2,
+        "low": 3,
+        "info": 4,
+        "unknown": 5,
+    }
+
+    severity_icons = {
+        "critical": "🚨",
+        "high": "🔴",
+        "medium": "🟠",
+        "low": "🟡",
+        "info": "🔵",
+        "unknown": "⚪",
+    }
+
+    verdict_icons = {
+        "approved": "✅",
+        "approve": "✅",
+        "passed": "✅",
+        "pass": "✅",
+        "changes_requested": "❌",
+        "request_changes": "❌",
+        "failed": "❌",
+        "fail": "❌",
+        "comment": "💬",
+        "warning": "⚠️",
+    }
+
+    def build_comment(
+        self,
+        verdict: Any,
+        summary: Any,
+        findings: list[Any] | None = None,
+    ) -> str:
+        """
+        Build the complete GitHub Markdown comment.
+        """
+
+        safe_findings = findings or []
+
+        verdict_value = self._normalise_value(
+            verdict,
+            default="COMMENT",
+        ).upper()
+
+        verdict_icon = self.verdict_icons.get(
+            verdict_value.lower(),
+            "💬",
+        )
+
+        summary_text = self._normalise_summary(summary)
+
+        grouped_findings = self._group_findings(
+            safe_findings
+        )
+
+        generated_at = datetime.now(
+            timezone.utc
+        ).strftime("%Y-%m-%d %H:%M UTC")
+
+        sections = [
+            "# 🤖 AI Code Review",
+            "",
+            "## Verdict",
+            "",
+            f"{verdict_icon} **{verdict_value}**",
+            "",
+            "---",
+            "",
+            "## Review Summary",
+            "",
+            summary_text,
+            "",
+            "---",
+            "",
+            "## Findings",
+            "",
+        ]
+
+        if not safe_findings:
+            sections.extend(
+                [
+                    "✅ No review findings were identified.",
+                    "",
+                ]
+            )
+        else:
+            for severity in sorted(
+                grouped_findings,
+                key=lambda value: self.severity_order.get(
+                    value,
+                    99,
+                ),
+            ):
+                severity_findings = grouped_findings[
+                    severity
+                ]
+
+                icon = self.severity_icons.get(
+                    severity,
+                    "⚪",
+                )
+
+                sections.extend(
+                    [
+                        (
+                            f"### {icon} "
+                            f"{severity.title()} "
+                            f"({len(severity_findings)})"
+                        ),
+                        "",
+                    ]
+                )
+
+                for index, finding in enumerate(
+                    severity_findings,
+                    start=1,
+                ):
+                    sections.extend(
+                        self._format_finding(
+                            finding=finding,
+                            index=index,
+                        )
+                    )
+
+        sections.extend(
+            [
+                "---",
+                "",
+                "<details>",
+                "<summary>Review metadata</summary>",
+                "",
+                f"- Generated: `{generated_at}`",
+                (
+                    "- Reviewer: "
+                    "`AI Code Review & Governance System`"
+                ),
+                (
+                    f"- Total findings: "
+                    f"`{len(safe_findings)}`"
+                ),
+                "",
+                "</details>",
+                "",
+                (
+                    "<!-- "
+                    "ai-code-review-governance-comment "
+                    "-->"
+                ),
+            ]
+        )
+
+        return "\n".join(sections).strip()
+
+    def _group_findings(
+        self,
+        findings: list[Any],
+    ) -> dict[str, list[Any]]:
+        """
+        Group findings by severity.
+        """
+
+        grouped: dict[str, list[Any]] = defaultdict(
+            list
+        )
+
+        for finding in findings:
+            severity = self._get_field(
+                finding,
+                "severity",
+                "unknown",
+            )
+
+            severity_value = self._normalise_value(
+                severity,
+                default="unknown",
+            ).lower()
+
+            grouped[severity_value].append(finding)
+
+        return dict(grouped)
+
+    def _format_finding(
+        self,
+        finding: Any,
+        index: int,
+    ) -> list[str]:
+        """
+        Format one Finding object as Markdown.
+        """
+
+        title = self._get_field(
+            finding,
+            "title",
+            "Review finding",
+        )
+
+        description = self._get_field(
+            finding,
+            "description",
+            "No description was provided.",
+        )
+
+        recommendation = self._get_field(
+            finding,
+            "recommendation",
+            "Review and correct the identified issue.",
+        )
+
+        file_path = self._get_field(
+            finding,
+            "file_path",
+            "Unknown file",
+        )
+
+        line_number = self._get_field(
+            finding,
+            "line_number",
+            None,
+        )
+
+        category = self._get_field(
+            finding,
+            "category",
+            "general",
+        )
+
+        source_type = self._get_field(
+            finding,
+            "source_type",
+            "unknown",
+        )
+
+        tool_name = self._get_field(
+            finding,
+            "tool_name",
+            "unknown",
+        )
+
+        confidence = self._get_field(
+            finding,
+            "confidence",
+            None,
+        )
+
+        location = f"`{file_path}`"
+
+        if line_number is not None:
+            location += f", line `{line_number}`"
+
+        source_value = self._normalise_value(
+            source_type,
+            default="unknown",
+        )
+
+        lines = [
+            f"#### {index}. {title}",
+            "",
+            f"**Location:** {location}",
+            "",
+            f"**Category:** `{category}`",
+            "",
+            f"**Description:** {description}",
+            "",
+            f"**Recommendation:** {recommendation}",
+            "",
+            (
+                f"**Source:** `{source_value}` "
+                f"via `{tool_name}`"
+            ),
+        ]
+
+        if confidence is not None:
+            confidence_text = self._format_confidence(
+                confidence
+            )
+
+            lines.extend(
+                [
+                    "",
+                    f"**Confidence:** `{confidence_text}`",
+                ]
+            )
+
+        lines.extend(
+            [
+                "",
+                "---",
+                "",
+            ]
+        )
+
+        return lines
+
+    def _normalise_summary(
+        self,
+        summary: Any,
+    ) -> str:
+        """
+        Convert different summary types into text.
+        """
+
+        if summary is None:
+            return "No review summary was generated."
+
+        if isinstance(summary, str):
+            return (
+                summary.strip()
+                or "No review summary was generated."
+            )
+
+        if isinstance(summary, dict):
+            possible_text_fields = [
+                "summary",
+                "text",
+                "message",
+                "content",
+            ]
+
+            for field in possible_text_fields:
+                value = summary.get(field)
+
+                if value:
+                    return str(value)
+
+            return "\n".join(
+                f"- **{key}:** {value}"
+                for key, value in summary.items()
+            )
+
+        if hasattr(summary, "model_dump"):
+            return self._normalise_summary(
+                summary.model_dump()
+            )
+
+        return str(summary)
+
+    def _get_field(
+        self,
+        value: Any,
+        field_name: str,
+        default: Any = None,
+    ) -> Any:
+        """
+        Read a field from either a dictionary,
+        Pydantic model or normal Python object.
+        """
+
+        if value is None:
+            return default
+
+        if isinstance(value, dict):
+            return value.get(
+                field_name,
+                default,
+            )
+
+        return getattr(
+            value,
+            field_name,
+            default,
+        )
+
+    def _normalise_value(
+        self,
+        value: Any,
+        default: str,
+    ) -> str:
+        """
+        Convert strings and Enum values into text.
+        """
+
+        if value is None:
+            return default
+
+        if hasattr(value, "value"):
+            return str(value.value)
+
+        text = str(value).strip()
+
+        return text or default
+
+    def _format_confidence(
+        self,
+        confidence: Any,
+    ) -> str:
+        """
+        Convert confidence into a percentage.
+        """
+
+        try:
+            numeric_confidence = float(confidence)
+
+            if 0 <= numeric_confidence <= 1:
+                numeric_confidence *= 100
+
+            return f"{numeric_confidence:.0f}%"
+
+        except (TypeError, ValueError):
+            return str(confidence)

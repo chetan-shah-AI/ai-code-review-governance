@@ -6,6 +6,7 @@ from app.graph.nodes import (
     deterministic_review_node,
     governance_review_node,
     merge_findings_node,
+    publish_review_node,
     summary_node,
     triage_node,
     verdict_node,
@@ -28,6 +29,7 @@ def build_review_workflow():
     graph.add_node("merge_findings", merge_findings_node)
     graph.add_node("verdict", verdict_node)
     graph.add_node("summary", summary_node)
+    graph.add_node("publish_review",publish_review_node)
 
 
     graph.set_entry_point("triage")
@@ -38,8 +40,8 @@ def build_review_workflow():
     graph.add_edge("governance_review", "merge_findings")
     graph.add_edge("merge_findings", "verdict")
     graph.add_edge("verdict", "summary")
-    graph.add_edge("summary", END)
-    
+    graph.add_edge("summary", "publish_review")
+    graph.add_edge("publish_review", END)
 
     return graph.compile()
 
@@ -53,7 +55,10 @@ def run_review_workflow(review_input: ReviewInput) -> ReviewGraphState:
 
     initial_state: ReviewGraphState = {
         "review_input": review_input,
+        "publish_enabled": True,
         "errors": [],
     }
 
     return workflow.invoke(initial_state)
+
+
